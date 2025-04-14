@@ -1,4 +1,4 @@
-module backend
+module github.com/manya-s13/data-ingestion/backend
 
 go 1.24.2
 

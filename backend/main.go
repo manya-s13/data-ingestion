@@ -141,6 +141,54 @@
 // 	fmt.Fprintf(w, "Ingested: %s", payload.Value)
 // }
 
+// package main
+
+// import (
+// 	"log"
+// 	"net/http"
+// 	"os"
+
+// 	"github.com/gorilla/mux"
+// 	"github.com/joho/godotenv"
+// )
+
+// func main() {
+// 	// Load environment variables
+// 	if err := godotenv.Load(); err != nil {
+// 		log.Println("No .env file found")
+// 	}
+	
+// 	// Initialize JWT secret
+// 	jwtSecret = []byte(getEnv("JWT_SECRET", ""))
+// 	if len(jwtSecret) == 0 {
+// 		log.Fatal("JWT_SECRET is required")
+// 	}
+
+// 	// Initialize database
+// 	if err := initDatabase(); err != nil {
+// 		log.Fatal("Database initialization failed:", err)
+// 	}
+// 	defer closeDatabase()
+	
+// 	// Setup and start server
+// 	r := mux.NewRouter()
+	
+// 	// Routes
+// 	r.HandleFunc("/login", handleLogin).Methods("POST")
+// 	r.HandleFunc("/ingest", authMiddleware(handleIngest)).Methods("POST")
+	
+// 	// Start server
+// 	log.Println("Server running on :8080")
+// 	log.Fatal(http.ListenAndServe(":8080", r))
+// }
+
+// // getEnv retrieves environment variables with fallback
+// func getEnv(key, fallback string) string {
+// 	if val, ok := os.LookupEnv(key); ok {
+// 		return val
+// 	}
+// 	return fallback
+// }
 package main
 
 import (
@@ -150,6 +198,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
+	
 )
 
 func main() {
@@ -157,32 +206,37 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found")
 	}
-	
-	// Initialize JWT secret
-	jwtSecret = []byte(getEnv("JWT_SECRET", ""))
-	if len(jwtSecret) == 0 {
+
+	// Set JWT secret from env
+	handler.JwtSecret = []byte(getEnv("JWT_SECRET", ""))
+	if len(handler.JwtSecret) == 0 {
 		log.Fatal("JWT_SECRET is required")
 	}
 
-	// Initialize database
-	if err := initDatabase(); err != nil {
+	// Initialize ClickHouse DB
+	if err := clickhouse.InitClickHouse(); err != nil {
 		log.Fatal("Database initialization failed:", err)
 	}
-	defer closeDatabase()
-	
-	// Setup and start server
+	defer clickhouse.CloseClickHouse()
+
+	// Setup router
 	r := mux.NewRouter()
-	
-	// Routes
-	r.HandleFunc("/login", handleLogin).Methods("POST")
-	r.HandleFunc("/ingest", authMiddleware(handleIngest)).Methods("POST")
-	
+
+	// Public routes
+	r.HandleFunc("/register", handler.Register).Methods("POST")
+	r.HandleFunc("/login", handler.Login).Methods("POST")
+
+	// Protected routes
+	api := r.PathPrefix("/api").Subrouter()
+	api.Use(handler.AuthMiddleware)
+	api.HandleFunc("/ingest", handler.IngestFlatFile).Methods("POST")
+	api.HandleFunc("/data", handler.GetData).Methods("GET") // optional if needed
+
 	// Start server
 	log.Println("Server running on :8080")
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
 
-// getEnv retrieves environment variables with fallback
 func getEnv(key, fallback string) string {
 	if val, ok := os.LookupEnv(key); ok {
 		return val
